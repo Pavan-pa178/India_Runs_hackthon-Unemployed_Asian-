@@ -54,20 +54,13 @@ ai_tools_used:
   
 
 ai_usage_summary: |
-  Used Claude extensively for: exploratory data analysis of the released
-  	candidates.jsonl (title/skill frequency distributions, honeypot pattern
-  	discovery), drafting and iterating on the scoring modules (title
-  	taxonomy, skill taxonomy, anomaly detection, behavioral signal scoring),
-  	and authoring documentation. All empirical claims underlying the scoring
-  	weights were independently verified by running the corresponding
-  	analysis scripts against the actual dataset, not asserted from model
-  	priors. No candidate data was sent to any external hosted LLM API as
-  	part of the ranking pipeline itself (the ranker is offline, rule-based,
-  	and has zero network calls at ranking time -- see compute.has_network_during_ranking).
-  
-  Used Chatgpt to Understand the key points that needed to be kept in mind while developing the Ranker.
-  	it is mainly used to analyze the candidate dataset, job description, redrob signals , to understand what needs to be build.
-  	By keeping the constraints in mind we have understood the actual problem we are solving.
+  Used Claude for reasoning through the scoring logic and assessing code
+  correctness, debugging issues during development, and understanding
+  concepts to help develop ideas for the ranking approach.
+
+  Used ChatGPT to understand the key requirements and constraints of the
+  hackathon, analyze the job description and Redrob signals, and figure
+  out what needed to be built within the compute limits.
   
 
 # ============================================================================

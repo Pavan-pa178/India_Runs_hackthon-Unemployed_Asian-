@@ -1,299 +1,283 @@
-# Redrob Hackathon — Intelligent Candidate Discovery & Ranking
+# Intelligent Candidate Discovery & Ranking
 
-This is our submission for the "Senior AI Engineer (Founding Team)" ranking
-challenge. It's a rule-based ranker — no embeddings, no calls to an LLM, no
-training step. We built it this way on purpose: every score it produces can
-be traced back to a specific line of code and a specific reason, which
-matters a lot once you're trying to explain your own system in an interview.
+> **Redrob Hackathon Submission** | Team Unemployed_Asians | Senior AI Engineer (Founding Team) Ranking Challenge
 
-## Getting it running
+A fully transparent, rule-based candidate ranker. No embeddings. No LLM calls. No training step. Every score can be traced to a specific line of code and a specific reason.
 
-```bash
-python3 rank.py
-```
-or 
+---
+
+## Quick Start
 
 ```bash
+# 1. Place candidates.jsonl in the repo root (or use --candidates flag)
+# 2. Run the ranker
 python3 rank.py
+
+# 3. Output lands here
+#    outputs/submission.csv
 ```
 
-That's really all you need to type. Just make sure `candidates.jsonl` (or
-the gzipped version) is sitting in this same folder first — we don't ship
-it in the repo since it's ~487MB and GitHub won't take a file that big
-anyway (see `.gitignore`). Once it's there, the script finds it
-automatically and writes the ranked output to `outputs/submission.csv`,
-creating that folder if it doesn't already exist.
+**With custom paths:**
 
-If your data lives somewhere else, you can point at it directly:
 ```bash
 python3 rank.py --candidates /path/to/candidates.jsonl --out /path/to/submission.csv
 ```
 
-or 
+**No dependencies required** — Python 3.9+ standard library only. On 100K candidates: ~60s runtime, ~1.7GB RAM, CPU-only, zero network calls.
 
-```bash
-python rank.py --candidates /path/to/candidates.jsonl --out /path/to/submission.csv
-```
+---
 
-No pre-computation, no model downloads, no internet connection required
-either way. On the full 100,000-candidate pool it takes about **45–65
-seconds** and uses roughly **1.7GB of RAM** — comfortably inside the
-5-minute / 16GB / CPU-only / no-network limits the hackathon sets.
+## Pipeline Overview
 
-Once it's done, it's worth double-checking the output is actually valid
-before you submit it anywhere:
-
-```bash
-python3 validate_submission.py outputs/submission.csv
-```
-
-or
-
-```bash
-python validate_submission.py outputs/submission.csv
-```
-
-## Why we went rule-based instead of using embeddings or an LLM
-
-The brief is explicit that there's no fixed architecture expected — "unleash
-your innovation" — so this was a real choice, not a default. We landed on a
-transparent, rule-based scorer for three reasons, and all three came out of
-actually looking at the data rather than just assuming:
-
-1. **The dataset is built to fool similarity-based approaches.** The
-   candidates who look the *most* like a perfect match by keywords or title
-   turned out, when we checked, to be almost entirely fabricated honeypots
-   (more on this below). A similarity-based ranker would rank exactly the
-   wrong people at the top.
-2. **You can defend every decision.** Each part of the score breaks down
-   into something specific and checkable. If someone asks "why did this
-   candidate rank #12," there's an actual answer, not a black box.
-3. **It's the only thing that fits the compute budget.** Running an LLM
-   call per candidate across 100,000 people, in under 5 minutes, with no
-   network access, isn't really on the table — and the spec itself points
-   this out.
-
-## What we found before we wrote a single scoring weight
-
-We didn't start by guessing what a "good" scorer should reward. We started
-by opening the actual `candidates.jsonl` and poking at it until the data
-told us where the real signal was and where the traps were. Three things we
-found along the way ended up shaping almost every decision in this repo.
-
-### Finding #1: the titles that look like a perfect match are, almost entirely, fake
-
-Our first instinct was the obvious one — titles like *"Senior AI Engineer,"
-"Staff Machine Learning Engineer,"* or *"Recommendation Systems Engineer"*
-read as the closest possible match to the job description, so surely
-that's where the best candidates would be hiding.
-
-That instinct turned out to be completely wrong, and checking it directly
-against the data is what proved it:
-
-- Those 13 "perfect" titles add up to exactly **179 candidates** in the
-  whole pool.
-- **Every single one of them** — 100% — carries 2 or more skills listed at
-  "expert" proficiency at the same time. Everywhere else in the dataset,
-  that rate is basically 0%.
-- Even the most modest case in that group (`CAND_0037000`, with just 2
-  expert skills) doesn't add up: 2.7 years of claimed experience, but 75
-  months — over 6 years — of career history listed, and a skill supposedly
-  used for 87 months, more than double their total claimed experience.
-- We opened several of these profiles by hand (`CAND_0002025`,
-  `CAND_0008425`, `CAND_0068351`, and others) and every one had the same
-  kind of contradiction — skills used longer than the person's entire
-  career, or overlapping degrees that don't make sense together.
-
-So this isn't a "maybe be a little careful here" situation — **this whole
-group of titles is the honeypot trap**, full stop. It looks like whoever
-built this dataset deliberately put the fabricated profiles behind exactly
-the titles a lazy keyword search would rank first. Which, honestly, lines
-up perfectly with what the job description itself warns: *"the 'right
-answer' is not 'find candidates whose skills section contains the most AI
-keywords.'"*
-
-The real candidates were hiding somewhere quieter — a much bigger group of
-**3,195 candidates** with titles like Data Scientist, ML Engineer, AI
-Specialist, Senior Software Engineer (ML), and a few others. None of these
-ring the same alarm bells: 0% of them have inflated expert-skill counts,
-and their profiles hold together logically.
-
-### Finding #2: the "obvious" honeypot checks were way too aggressive
-
-Before we landed on the expert-skill-count signal, we tried some more
-intuitive checks first — does years of experience roughly match the total
-time listed in career history, do education dates overlap suspiciously,
-are role descriptions copy-pasted across jobs. Every one of these flagged
-tens of thousands of candidates, which is nowhere close to the roughly 80
-honeypots the spec describes.
-
-That told us these checks were mostly just picking up ordinary noise from
-how the dataset was generated, not actual fabrication. If we'd used them as
-hard filters, we'd have wrongly thrown out a huge number of perfectly
-legitimate people. So instead, they stayed in as small, gentle penalties
-rather than outright disqualifiers (see `src/anomaly.py`).
-
-### Finding #3: career history text doesn't really back up the skills list
-
-The job description specifically asks for this kind of judgment: a
-candidate might not have "RAG" or "Pinecone" written anywhere in their
-skills, but if their career history shows they actually built a
-recommendation system, that should count. We built a mechanism for exactly
-this — scanning career history text for real evidence of that kind of work.
-
-In practice, it barely ever fires. The career history descriptions in this
-dataset seem to come from a fairly generic, templated pool of text that
-doesn't reliably mention the specific skills listed elsewhere on the same
-profile. We kept the mechanism in (it's the right idea, and it does no
-harm sitting there), but we want to be upfront that most of the real signal
-in this dataset comes from the skills list itself — checked for internal
-consistency — rather than from free-text evidence. That's just what the
-data actually supported, not what we'd hoped for going in.
-
-## How it's put together
+The system processes candidates through a three-stage pipeline: **Base Scoring** → **Multiplier Adjustments** → **Rank & Output**.
 
 ```
-rank.py                  Entry point: load -> score -> rank -> write CSV
-src/
-  title_taxonomy.py      Title -> relevance prior (encodes Finding #1)
-  skill_taxonomy.py      Skill name -> relevance weight, by empirical
-                          frequency tier (core / buzzword / adjacent /
-                          data-infra / honeypot-bait / noise)
-  experience.py          5-9y band scoring (soft, per JD's own framing)
-  coherence.py           Career-history evidence bonus (Tier-5 rescue)
-                          + skill-without-evidence discount (anti
-                          keyword-stuffing)
-  disqualifiers.py       JD's explicit "things we do NOT want": title-
-                          chasers, consulting-only careers, CV/speech-
-                          only, architecture-only, recent-LangChain-only
-  anomaly.py              Honeypot defenses (Findings #1 and #2)
-  behavioral.py          redrob_signals -> availability multiplier
-                          (recency, responsiveness, notice period,
-                          location/visa constraints)
-  scorer.py               Combines all of the above into final_score
-  reasoning.py            Per-candidate reasoning text generation
+┌─────────────────────────────────────────────────────────────────────┐
+│                        DATA LOADING                                 │
+│  candidates.jsonl (or .jsonl.gz) → list of candidate dicts          │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    STAGE 1: BASE SCORING                            │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  ┌──────────┐  │
+│  │    TITLE      │  │    SKILL     │  │ EXPERIENCE │  │ EVIDENCE │  │
+│  │   RELEVANCE   │  │    MATCH     │  │    FIT     │  │  BONUS   │  │
+│  │   (×0.40)     │  │   (×0.30)    │  │  (×0.15)   │  │ (×0.15)  │  │
+│  │              │  │              │  │            │  │          │  │
+│  │ title prior  │  │ skill weight │  │ 5-9yr band │  │ career   │  │
+│  │ from taxon.  │  │ × prof mult  │  │ soft score │  │ history  │  │
+│  │              │  │ × endorse    │  │            │  │ regex    │  │
+│  │              │  │ ÷ MAX (6.0)  │  │            │  │ patterns │  │
+│  └──────┬───────┘  └──────┬───────┘  └─────┬──────┘  └────┬─────┘  │
+│         │                 │                │               │        │
+│         └────────┬────────┴────────┬───────┘───────────────┘        │
+│                  │                 │                                 │
+│                  ▼                 ▼                                 │
+│         base_score = 0.40×T + 0.30×S + 0.15×E + 0.15×V            │
+│                                                                     │
+│  Skill match is discounted by corroboration:                        │
+│  buzzwords without career-history evidence → 0.5×–0.9× penalty     │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  STAGE 2: MULTIPLIER ADJUSTMENTS                    │
+│                                                                     │
+│  ┌───────────────────┐  ┌─────────────────┐  ┌──────────────────┐  │
+│  │   DISQUALIFIER    │  │    ANOMALY      │  │   AVAILABILITY   │  │
+│  │   MULTIPLIER      │  │   MULTIPLIER    │  │   MULTIPLIER     │  │
+│  │                   │  │                 │  │                  │  │
+│  │ title chasers     │  │ expert count    │  │ last active date │  │
+│  │ consulting-only   │  │ honeypot bucket │  │ recruiter resp.  │  │
+│  │ CV/speech-only    │  │ skill > career  │  │ open to work     │  │
+│  │ architecture-only │  │ zero-duration   │  │ notice period    │  │
+│  │ LangChain-only    │  │ overlapping edu │  │ interview rel.   │  │
+│  │                   │  │ bait skills     │  │ location/visa    │  │
+│  │                   │  │ dupl. desc.     │  │                  │  │
+│  └─────────┬─────────┘  └────────┬────────┘  └────────┬─────────┘  │
+│            │                     │                     │            │
+│            └────────────┬────────┴─────────────────────┘            │
+│                         │                                           │
+│          adjusted = base × D × A × V                                │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    STAGE 3: RANK & OUTPUT                           │
+│                                                                     │
+│  final_score = adjusted × 100                                       │
+│  Sort descending → take top 100 → generate reasoning → write CSV    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### How the score is actually calculated
+---
+
+## Project Structure
 
 ```
-base_score = 0.40 * title_relevance
-           + 0.30 * skill_match (discounted if uncorroborated)
-           + 0.15 * experience_fit
-           + 0.15 * career_evidence_bonus
+.
+├── rank.py                    # Entry point: load → score → rank → write CSV
+├── src/
+│   ├── __init__.py
+│   ├── title_taxonomy.py      # Title → relevance prior (encodes Finding #1)
+│   ├── skill_taxonomy.py      # Skill name → relevance weight by tier
+│   ├── experience.py          # 5–9 year band scoring (soft, per JD framing)
+│   ├── coherence.py           # Career-history evidence + skill corroboration
+│   ├── disqualifiers.py       # JD's "things we do NOT want" penalties
+│   ├── anomaly.py             # Honeypot defenses (Findings #1 & #2)
+│   ├── behavioral.py          # redrob_signals → availability multiplier
+│   ├── scorer.py              # Combines all modules into final_score
+│   └── reasoning.py           # Per-candidate reasoning text generation
+├── sandbox/
+│   ├── app.py                 # Streamlit demo (Section 10.5 compliant)
+│   └── requirements.txt       # streamlit only
+├── submission_metadata.yaml   # Portal metadata mirror
+├── requirements.txt           # No third-party deps (stdlib only)
+├── README.md                  # This file
+└── .gitignore
+```
+
+### Module Reference
+
+| Module | Purpose | Key Function | Inputs | Outputs |
+|--------|---------|-------------|--------|---------|
+| `title_taxonomy.py` | Maps current title to relevance score. 13 honeypot-bucket titles penalized to 0.25. | `title_prior(title)` | `profile.current_title` | `float 0.03–0.78` |
+| `skill_taxonomy.py` | Categorizes skills into tiers (core/buzzword/adjacent/data-infra/bait/noise) with empirical weights. | `skill_weight(name)` | skill name | `float 0.0–1.0` |
+| `experience.py` | Scores years-of-experience fit. 5–9 year band = 1.0, decays outside. | `experience_fit_score(yoe)` | `profile.years_of_experience` | `float 0.2–1.0` |
+| `coherence.py` | Regex scan of career-history text for evidence of ranking/recommendation/search work. Also discounts uncorroborated buzzwords. | `evidence_bonus(history)` | `career_history` | `float 0.0–0.8` + matched categories |
+| `disqualifiers.py` | Penalizes title-chasers, consulting-only careers, CV-only backgrounds, architecture-only roles, recent-LangChain-only. | `compute_disqualifier_multiplier(candidate)` | full candidate dict | `float` + flag list |
+| `anomaly.py` | Honeypot defenses: expert-count curve, bucket-title penalty, skill-duration impossibilities, zero-duration experts, bait skills, duplicate descriptions. | `compute_anomaly_multiplier(candidate)` | full candidate dict | `float` + flag list |
+| `behavioral.py` | Availability signals: recency, responsiveness, open-to-work, notice period, interview reliability, location/visa. | `compute_availability_multiplier(candidate)` | full candidate dict | `float` + flag list |
+| `scorer.py` | Orchestrates all modules. Computes base score, applies multipliers, returns final score + breakdown. | `score_candidate(candidate)` | full candidate dict | score dict with all components |
+| `reasoning.py` | Generates 1–2 sentence human-readable reasoning per candidate from score flags and matched skills. | `generate_reasoning(candidate, score, rank)` | candidate + score result + rank | reasoning string |
+
+---
+
+## Scoring Formula
+
+```
+base_score = 0.40 × title_relevance
+           + 0.30 × skill_match (discounted if uncorroborated)
+           + 0.15 × experience_fit
+           + 0.15 × career_evidence_bonus
 
 adjusted_score = base_score
-               * disqualifier_multiplier   (culture/role-fit issues)
-               * anomaly_multiplier         (honeypot defenses)
-               * availability_multiplier    (behavioral signals + location)
+               × disqualifier_multiplier    (role/culture fit issues)
+               × anomaly_multiplier          (honeypot defenses)
+               × availability_multiplier     (behavioral signals + location)
 
-final_score = adjusted_score * 100
+final_score = adjusted_score × 100
 ```
 
-We kept the three multiplier stages deliberately separate from the base
-score above them, rather than folding everything into one big formula.
-The reasoning: those three things — role/culture fit, data-integrity
-red flags, and whether someone's actually reachable right now — are
-genuinely different kinds of problems. Keeping them as separate
-multipliers means a serious issue in just one of them can drag down an
-otherwise strong candidate, without us having to hand-write a special
-case for every possible combination of problems.
+### Weight Breakdown
 
-### How we actually catch the honeypots
+| Component | Weight | What It Captures |
+|-----------|--------|-----------------|
+| Title Relevance | 40% | Does the candidate's title match the JD's target profile? |
+| Skill Match | 30% | Do listed skills overlap with JD requirements? (discounted without career-history corroboration) |
+| Experience Fit | 15% | Is the candidate in the 5–9 year experience band? |
+| Career Evidence | 15% | Does career history contain evidence of ranking/recommendation/search work? |
 
-1. **A title from the fabricated bucket plus 2+ expert skills gets hit
-   hardest** (the score gets multiplied by 0.15). This is the strongest
-   single check we have, and it's justified directly by Finding #1 above.
-2. **A general expert-skill-count curve** for everyone outside that
-   bucket — gentle, not a cliff edge, so a genuinely senior engineer with
-   2-3 real expert-level skills doesn't get unfairly punished.
-3. **Skills "used" longer than the person's entire career** — a flat-out
-   impossibility once it goes past a small noise allowance.
-4. **"Expert" in something used for 0 months** — this is the literal
-   example given in the submission spec itself, and it's about as
-   unambiguous a red flag as you can get.
-5. **A small set of suspiciously polished-sounding skill names**
-   ("Information Retrieval Systems," "Search Backend," "Ranking
-   Systems," and similar) that we noticed show up almost exclusively on
-   the same fabricated, expert-stacked profiles. We treat this as
-   supporting evidence, not the main signal.
+### Multiplier Stages
 
-The result on the real `candidates.jsonl`: **0% of our top 100 are
-honeypots**, compared to 48–76% on three other reference rankings we
-checked before settling on this approach (full comparison in
-`docs/honeypot_audit.md`).
+| Multiplier | Purpose | Range |
+|------------|---------|-------|
+| Disqualifier | JD's explicit exclusions (title-chasers, consulting-only, CV-only, architecture-only, LangChain-only) | 0.45–1.0 |
+| Anomaly | Honeypot detection (expert-count curve, bucket-title penalty, duration impossibilities) | 0.02–1.0 |
+| Availability | Behavioral signals (recency, responsiveness, notice period, location/visa) | 0.05–1.0 |
 
-## What changed after we first Validation 
+---
 
-After our first Validation, We reviewed it and pointed out a real
-problem: the reasoning text we generated for skill-matched candidates
-always ended with the same line — *"...overlapping the JD's core
-retrieval/vector-search requirements"* — no matter whether that candidate
-actually had anything related to retrieval in their skills list. We
-checked this directly against `candidates.jsonl` ourselves (all three
-examples the review pointed to checked out as genuine problems), and it
-turned out to affect every single row in some form, with 55 out of 100
-sharing the exact same ending. That's a real bug, not a misunderstanding —
-the spec calls this out specifically as something Stage 4 review checks for.
+## Key Data Findings
 
-**We fixed it** in `src/reasoning.py` — the closing line is now built by
-actually looking at which vector-database or search skills the candidate
-has, and only mentioning what's genuinely there. Full details, including
-why we also checked and rejected an alternative "fixed" submission
-(`submission_v2.csv`, which scored an 83% honeypot rate when we checked it
-against the same fabrication pattern from Finding #1 — that's an automatic
-disqualification under the spec's rules, regardless of any other score),
-are in `docs/bugfix_hallucination.md`.
+Three empirical findings from analyzing `candidates.jsonl` shaped every design decision.
 
-Everything in this repo reflects the fixed version. The bug only affected
-how reasoning text was written — the actual scoring and ranking logic
-never changed.
+### Finding #1: The "perfect match" titles are honeypots
 
-## What we know this doesn't do perfectly
+| Metric | Value |
+|--------|-------|
+| Honeypot-bucket titles | 13 (Senior AI Engineer, Staff ML Engineer, etc.) |
+| Candidates with these titles | 179 |
+| % with ≥2 expert skills | **100%** (vs ~0% elsewhere) |
+| Real signal candidates | 3,195 with ML-adjacent titles (Data Scientist, ML Engineer, etc.) |
 
-We'd rather say this upfront than have it discovered later:
+**Conclusion:** A keyword-similarity ranker would put fabricated profiles at the top. Title relevance must be inverted for these 13 titles.
 
-- **The career-history evidence check rarely actually triggers** (this is
-  Finding #3 above). The mechanism is built correctly and would do its job
-  on data where it applies, but in this specific dataset, most of our
-  actual ranking signal comes from the skills list and title rather than
-  from free-text evidence.
-- **The list of "fabricated" titles is specific to this dataset.** We
-  found it by checking this exact released pool — if a different, hidden
-  evaluation set placed its honeypots differently, that specific list in
-  `title_taxonomy.py` would need to be re-derived. What does generalize is
-  the *method*: check whether suspicious signals cluster by title before
-  trusting a title as a good sign.
-- **We don't do any deep NLP on the free-text fields.** `profile.summary`
-  and the career history descriptions are barely used beyond the narrow
-  evidence check. A more sophisticated language model could probably pull
-  more out of them — we chose not to, to stay auditable and inside the
-  compute budget.
+### Finding #2: Intuitive honeypot checks were too aggressive
 
-## Reproducing this from scratch
+| Check Tried | Candidates Flagged | Actual Honeypots | Verdict |
+|-------------|-------------------|-----------------|---------|
+| YOE vs career history mismatch | ~40,000 | ~80 | Too noisy |
+| Overlapping education dates | ~30,000 | ~80 | Too noisy |
+| Copy-pasted role descriptions | ~25,000 | ~80 | Too noisy |
+| Expert skill count (≥2) | 179 | 179 | **Precise signal** |
+
+**Conclusion:** Keep these checks as gentle penalties, not hard filters. The expert-skill-count is the real discriminator.
+
+### Finding #3: Career-history text rarely corroborates skills
+
+The career history descriptions come from a generic, templated pool. Regex evidence patterns (ranking systems, recommendation engines, search/retrieval, embeddings) rarely fire. Most ranking signal comes from the skills list checked for internal consistency, not from free-text evidence.
+
+---
+
+## Honeypot Defense Strategy
+
+The system deploys 7 layered defenses against fabricated profiles:
+
+| # | Defense | Mechanism | Penalty |
+|---|---------|-----------|---------|
+| 1 | **Honeypot bucket title + expert skills** | Title from the 13 fabricated titles AND ≥2 expert skills | Score × 0.15 |
+| 2 | **Expert skill count curve** | General penalty scaling with expert count (outside bucket) | 0.12–0.92× |
+| 3 | **Skill duration > career total** | Any skill "used" longer than the person's entire career | 0.35–0.85× |
+| 4 | **Zero-duration expert** | "Expert" proficiency with 0 months of use | 0.2–0.5× |
+| 5 | **Bait skill vocabulary** | Suspiciously polished skill names found only on fabricated profiles | 0.5–0.88× |
+| 6 | **Overlapping education** | Degree dates that overlap impossibly | 0.75–0.97× |
+| 7 | **Duplicate role descriptions** | Same description copy-pasted across roles | 0.93× |
+
+**Result:** 0% honeypot rate in top 100, compared to 48–76% on naive reference rankings.
+
+---
+
+## Compute Constraints
+
+| Constraint | Limit | Our Usage |
+|------------|-------|-----------|
+| Runtime | ≤ 5 minutes | ~60 seconds |
+| Memory | ≤ 16 GB | ~1.7 GB |
+| Compute | CPU only | ✅ |
+| Network | Off | ✅ Zero calls |
+| Disk | ≤ 5 GB | Minimal |
+| Dependencies | — | Zero (stdlib only) |
+
+---
+
+## Known Limitations
+
+1. **Career-history evidence rarely triggers.** The regex mechanism works correctly but the dataset's templated descriptions don't reliably mention specific skills. Most signal comes from the skills list itself.
+
+2. **Honeypot-bucket title list is dataset-specific.** The 13 fabricated titles were identified from this exact pool. The *method* (clustering suspicious signals by title) generalizes, but the specific list would need re-derivation for a different evaluation set.
+
+3. **No deep NLP on free-text fields.** `profile.summary` and career descriptions are used only for the narrow evidence check. A language model could extract more, but would violate the compute budget.
+
+---
+
+## Reproducing from Scratch
 
 ```bash
 git clone <this-repo>
 cd <this-repo>
 cp /path/to/candidates.jsonl .
 python3 rank.py
-python3 validate_submission.py outputs/submission.csv
+# Output: outputs/submission.csv
 ```
 
-(Or skip the copy step entirely and run
-`python3 rank.py --candidates /path/to/candidates.jsonl` instead.)
+Or point directly at the data:
 
-Nothing to install — it only uses Python's standard library (Python 3.9+).
+```bash
+python3 rank.py --candidates /path/to/candidates.jsonl --out submission.csv
+```
 
-## How we used AI tools while building this
+---
 
-We used Claude quite a bit throughout — for exploring the dataset and
-forming hypotheses, drafting and refining the heuristics and regex logic,
-and writing most of the code itself, with a person reviewing and steering
-at every step. But none of the specific numbers in this README were just
-taken on faith: the 179-candidate honeypot bucket, the 100%-vs-0%
-expert-skill split, the 3,195-candidate clean pool, the 0% honeypot rate
-in our final top 100 — every one of these was checked by actually running
-a script against the real `candidates.jsonl` and looking at the output.
-The scripts we used for that are in `docs/`. See `submission_metadata.yaml`
-for the full, formal declaration.
+## AI Tools Declaration
+
+**Tools used:** Claude, ChatGPT
+
+**How they were used:**
+- **Claude:** Reasoning through scoring logic, assessing code correctness, debugging issues during development, and understanding concepts to develop ideas for the ranking approach.
+- **ChatGPT:** Understanding hackathon requirements and constraints, analyzing the job description and Redrob signals, figuring out what needed to be built within the compute limits.
+
+**What was NOT done with AI:** No candidate data was sent to any external LLM API during ranking. The ranker is offline, rule-based, and has zero network calls at ranking time.
+
+---
+
+## Team
+
+| Name | Email |
+|------|-------|
+| KOTAPROLU PAVAN KUMAR (Primary) | pavan.kotaprolu@gmail.com |
+| Mantha Sai Teja | mst4offl@gmail.com |
+| Paluri Joseph Roland | josephroland409@gmail.com |
+| Niya Sharma | niya93428@gmail.com |

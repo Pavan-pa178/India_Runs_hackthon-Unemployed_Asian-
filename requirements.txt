@@ -1,7 +1,3 @@
-# No third-party dependencies required.
-# The ranker uses only the Python 3 standard library (json, gzip, csv,
-# argparse, re, datetime, pathlib) by design -- this keeps the compute
-# footprint minimal and trivially satisfies the "no network, CPU-only,
-# <=16GB RAM, <=5 minute" constraints with large margin.
-#
-# Python >= 3.9 required (uses dict | tuple type hints in a few places).
+streamlit>=1.30.0
+# The ranker itself uses only the Python 3 standard library.
+# streamlit is required only for the sandbox demo (sandbox/app.py).
