@@ -41,44 +41,44 @@ The system processes candidates through a three-stage pipeline: **Base Scoring**
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    STAGE 1: BASE SCORING                            │
 │                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  ┌──────────┐  │
+│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐  ┌──────────┐  │
 │  │    TITLE      │  │    SKILL     │  │ EXPERIENCE │  │ EVIDENCE │  │
 │  │   RELEVANCE   │  │    MATCH     │  │    FIT     │  │  BONUS   │  │
 │  │   (×0.40)     │  │   (×0.30)    │  │  (×0.15)   │  │ (×0.15)  │  │
-│  │              │  │              │  │            │  │          │  │
-│  │ title prior  │  │ skill weight │  │ 5-9yr band │  │ career   │  │
-│  │ from taxon.  │  │ × prof mult  │  │ soft score │  │ history  │  │
-│  │              │  │ × endorse    │  │            │  │ regex    │  │
-│  │              │  │ ÷ MAX (6.0)  │  │            │  │ patterns │  │
-│  └──────┬───────┘  └──────┬───────┘  └─────┬──────┘  └────┬─────┘  │
-│         │                 │                │               │        │
-│         └────────┬────────┴────────┬───────┘───────────────┘        │
-│                  │                 │                                 │
-│                  ▼                 ▼                                 │
-│         base_score = 0.40×T + 0.30×S + 0.15×E + 0.15×V            │
+│  │               │  │              │  │            │  │          │  │
+│  │ title prior   │  │ skill weight │  │ 5-9yr band │  │ career   │  │
+│  │ from taxon.   │  │ × prof mult  │  │ soft score │  │ history  │  │
+│  │               │  │ × endorse    │  │            │  │ regex    │  │
+│  │               │  │ ÷ MAX (6.0)  │  │            │  │ patterns │  │
+│  └──────┬────────┘  └──────┬───────┘  └─────┬──────┘  └────┬─────┘  │
+│         │                  │                │              │        │
+│         └────────┬─────────┴────────┬───────┘──────────────┘        │
+│                  │                  │                               │
+│                  ▼                  ▼                               │
+│         base_score = 0.40×T + 0.30×S + 0.15×E + 0.15×V              │
 │                                                                     │
 │  Skill match is discounted by corroboration:                        │
-│  buzzwords without career-history evidence → 0.5×–0.9× penalty     │
+│  buzzwords without career-history evidence → 0.5×–0.9× penalty      │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                  STAGE 2: MULTIPLIER ADJUSTMENTS                    │
 │                                                                     │
-│  ┌───────────────────┐  ┌─────────────────┐  ┌──────────────────┐  │
-│  │   DISQUALIFIER    │  │    ANOMALY      │  │   AVAILABILITY   │  │
-│  │   MULTIPLIER      │  │   MULTIPLIER    │  │   MULTIPLIER     │  │
-│  │                   │  │                 │  │                  │  │
-│  │ title chasers     │  │ expert count    │  │ last active date │  │
-│  │ consulting-only   │  │ honeypot bucket │  │ recruiter resp.  │  │
-│  │ CV/speech-only    │  │ skill > career  │  │ open to work     │  │
-│  │ architecture-only │  │ zero-duration   │  │ notice period    │  │
-│  │ LangChain-only    │  │ overlapping edu │  │ interview rel.   │  │
-│  │                   │  │ bait skills     │  │ location/visa    │  │
-│  │                   │  │ dupl. desc.     │  │                  │  │
-│  └─────────┬─────────┘  └────────┬────────┘  └────────┬─────────┘  │
-│            │                     │                     │            │
-│            └────────────┬────────┴─────────────────────┘            │
+│  ┌───────────────────┐  ┌─────────────────┐  ┌──────────────────┐   │
+│  │   DISQUALIFIER    │  │    ANOMALY      │  │   AVAILABILITY   │   │
+│  │   MULTIPLIER      │  │   MULTIPLIER    │  │   MULTIPLIER     │   │
+│  │                   │  │                 │  │                  │   │
+│  │ title chasers     │  │ expert count    │  │ last active date │   │
+│  │ consulting-only   │  │ honeypot bucket │  │ recruiter resp.  │   │
+│  │ CV/speech-only    │  │ skill > career  │  │ open to work     │   │
+│  │ architecture-only │  │ zero-duration   │  │ notice period    │   │
+│  │ LangChain-only    │  │ overlapping edu │  │ interview rel.   │   │
+│  │                   │  │ bait skills     │  │ location/visa    │   │
+│  │                   │  │ dupl. desc.     │  │                  │   │
+│  └─────────┬─────────┘  └────────┬────────┘  └────────┬─────────┘   │
+│            │                     │                    │             │
+│            └────────────┬────────┴────────────────────┘             │
 │                         │                                           │
 │          adjusted = base × D × A × V                                │
 └──────────────────────────────┬──────────────────────────────────────┘
