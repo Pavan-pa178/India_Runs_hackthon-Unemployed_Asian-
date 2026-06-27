@@ -48,14 +48,23 @@ if uploaded is not None:
     raw_text = uploaded.read().decode("utf-8")
     candidates = []
     errors = []
-    for i, line in enumerate(raw_text.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            candidates.append(json.loads(line))
-        except json.JSONDecodeError as e:
-            errors.append(f"Line {i+1}: {e}")
+    try:
+        data = json.loads(raw_text)
+        if isinstance(data, list):
+            candidates = data
+        elif isinstance(data, dict):
+            candidates = [data]
+        else:
+            errors.append("File contains a JSON value that is not an object or array.")
+    except json.JSONDecodeError:
+        for i, line in enumerate(raw_text.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                candidates.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                errors.append(f"Line {i+1}: {e}")
 
     if errors:
         st.error(f"{len(errors)} line(s) failed to parse:")
